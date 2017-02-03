@@ -59,7 +59,7 @@ def telemetry(sid, data):
     #print('peak is {} pred is {} {}'.format(peak, steering_angle_pred, steering_angle_pred_int))
     steering_angle = -1.0 + (float(steering_angle_pred_int) / float(step_ratio))
     # The driving model currently just outputs a constant throttle. Feel free to edit this.
-    throttle = 0.2
+    throttle = max(0.1, -0.15/0.05 * abs(steering_angle) + 0.35)
     print(steering_angle, throttle)
     send_control(steering_angle, throttle)
 
