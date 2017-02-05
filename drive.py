@@ -40,24 +40,15 @@ def telemetry(sid, data):
     transformed_image_array = image_array[None, :, :, :]
     X_test = np.zeros((1, 75, 320, 3))
     X_test = transformed_image_array[:, 60:135, :, :]
-    print('image shape {} {}'.format(transformed_image_array.shape, X_test.shape))
     # This model currently assumes that the features of the model are just the images. Feel free to change this.
 
-    # Normalization
-    #a = -0.5
-    #b = 0.5
-    #transformed_image_array = a + ((transformed_image_array * (b - a)) / 255)
-
-    step_ratio = 10
+    step_ratio = 20
     steering_angle_pred = model.predict(X_test, batch_size=1)
-    #print('pred type is {}'.format(type(steering_angle_pred)))
-    steering_angle_pred_int = step_ratio
-    peak = np.max(steering_angle_pred)
-    for i in range(steering_angle_pred.shape[1]):
-        if steering_angle_pred[0][i] == peak:
-            steering_angle_pred_int = i
-    #print('peak is {} pred is {} {}'.format(peak, steering_angle_pred, steering_angle_pred_int))
-    steering_angle = -1.0 + (float(steering_angle_pred_int) / float(step_ratio))
+
+    # range of output with mse is unclear:  clip the prediction in case it goes out of bounds
+    steering_angle_pred = max(0, steering_angle_pred)
+    steering_angle_pred = min(2 * step_ratio, steering_angle_pred)
+    steering_angle = -1.0 + (float(steering_angle_pred) / float(step_ratio))
     # The driving model currently just outputs a constant throttle. Feel free to edit this.
     throttle = max(0.1, -0.15/0.05 * abs(steering_angle) + 0.35)
     print(steering_angle, throttle)

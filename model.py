@@ -24,13 +24,21 @@ image_width = 320
 image_height = 75  # masked image dimension
 image_depth = 3
 batch_size = 128
-step_ratio = 10  # steering angle multipler
+nb_batches = 1
+nb_validation_batches = 1
+step_ratio = 20  # steering angle multipler
 nb_classes = 1 + (2 * step_ratio)  # -step_ratio, 0, +step_ratio
-incremental = True
+incremental = False
+short_run = False
+single_overlay = False
 classification_only = False
-add_shifted = True
-add_rotated = True
+add_shifted = False
+add_rotated = False
 add_side_cameras = False
+validation_split = 0.2
+
+plus5 = cv2.getRotationMatrix2D((80, 160), 5, 1)  # +5 degree rotation matrix
+minus5 = cv2.getRotationMatrix2D((80, 160), -5, 1)  # -5 degree rotation matrix
 
 # add training images for center camera with optional shift/rotate/side camera
 def add_training(log_list_, file_name, skip_row0):
@@ -53,6 +61,58 @@ def add_training(log_list_, file_name, skip_row0):
 
 
 
+def get_image(image, select):
+    if select == 1:
+        M = np.float32([[1,0,-3],[0,1,0]])
+        image = cv2.warpAffine(image, M, (320, 160))
+    elif select == 2:
+        M = np.float32([[1,0,3],[0,1,0]])
+        image = cv2.warpAffine(image, M, (320, 160))
+    elif select == 3:
+        image = cv2.warpAffine(image, minus5, (320, 160))  # size parameters reversed
+    elif select == 4:
+        image = cv2.warpAffine(image, plus5, (320, 160))  # size parameters reversed
+    # else return image as-is
+    return image
+
+
+
+def generate_training():
+    X = np.zeros((batch_size, image_height, image_width, image_depth))
+    y = np.zeros((batch_size, 1), dtype=int)
+    while 1:
+        c = 0
+        for r in range(batch_size * nb_batches):
+            row = train_list[r]
+            image = misc.imread(row[0])
+            get_image(image, row[2])
+            X[c] = image[60:135, :, :]
+            y[c] = int(step_ratio + (step_ratio * float(row[1])))
+            c += 1
+            if c == batch_size:
+                c = 0
+                yield (X, y)
+       
+
+
+def generate_validation():
+    X = np.zeros((batch_size, image_height, image_width, image_depth))
+    y = np.zeros((batch_size, 1), dtype=int)
+    while 1:
+        c = 0
+        for r in range(batch_size * nb_validation_batches):
+            row = validate_list[r]
+            image = misc.imread(row[0])
+            get_image(image, row[2])
+            X[c] = image[60:135, :, :]
+            y[c] = int(step_ratio + (step_ratio * float(row[1])))
+            c += 1
+            if c == batch_size:
+                c = 0
+                yield (X, y)
+
+
+ 
 # split layers for refinement learning (https://github.com/fchollet/keras/blob/master/examples/mnist_transfer_cnn.py)
 preprocessing_layers = [
     BatchNormalization(input_shape=(image_height, image_width, image_depth))
@@ -76,14 +136,16 @@ feature_layers = [
     Flatten()
 ]
 classification_layers = [
-    Dense(100),
+    Dense(1000),
     ELU(),
     Dropout(0.5),
-    Dense(50),
+    Dense(500),
     ELU(),
-    Dense(nb_classes),
-    Activation('softmax')
+    #Dense(nb_classes),
+    #Activation('softmax')
+    Dense(1)
 ]
+
 
 model = Sequential(preprocessing_layers + feature_layers + classification_layers)
 
@@ -93,9 +155,9 @@ if incremental and classification_only:
         l.trainable = False
 
 log_list = []
-if incremental:  # just load one set of training data to refine existing network weights
-    add_training(log_list, '/home/kjames/code/udacity/nd013/project3/round4/e8/driving_log.csv', False)
-else:  # observed results markedly better with a single pass vs refining, which seems to overweight the new data 
+if single_overlay:
+    add_training(log_list, '/home/kjames/code/udacity/nd013/project3/round5/e_bridge/driving_log.csv', False)
+else:
     add_training(log_list, '/home/kjames/code/udacity/nd013/project3/round4/1/driving_log.csv', False)
     add_training(log_list, '/home/kjames/code/udacity/nd013/project3/round4/2/driving_log.csv', False)
     add_training(log_list, '/home/kjames/code/udacity/nd013/project3/round4/3/driving_log.csv', False)
@@ -107,66 +169,52 @@ else:  # observed results markedly better with a single pass vs refining, which 
     add_training(log_list, '/home/kjames/code/udacity/nd013/project3/round4/e6/driving_log.csv', False)
     add_training(log_list, '/home/kjames/code/udacity/nd013/project3/round4/e7/driving_log.csv', False)
     add_training(log_list, '/home/kjames/code/udacity/nd013/project3/round4/e8/driving_log.csv', False)
+    add_training(log_list, '/home/kjames/code/udacity/nd013/project3/round4/e9/driving_log.csv', False)
     add_training(log_list, '/home/kjames/code/udacity/nd013/project3/round5/1/driving_log.csv', False)
+    add_training(log_list, '/home/kjames/code/udacity/nd013/project3/round5/e_dirt1/driving_log.csv', False)
+    add_training(log_list, '/home/kjames/code/udacity/nd013/project3/round5/e_bridge/driving_log.csv', False)
+    add_training(log_list, '/home/kjames/code/udacity/nd013/project3/round5/e_rcurve/driving_log.csv', False)
 
 print('list rows = {}'.format(len(log_list)))
 training_size = len(log_list)
-X_train = np.zeros((training_size, image_height, image_width, image_depth), dtype=np.uint8)
-y_train = np.zeros(training_size, dtype=int)
-print('X_train shape {}'.format(X_train.shape))
-#my_hist = np.zeros(nb_classes, dtype=int)
-plus5 = cv2.getRotationMatrix2D((80, 160), 5, 1)  # +5 degree rotation matrix
-minus5 = cv2.getRotationMatrix2D((80, 160), -5, 1)  # -5 degree rotation matrix
-for r in range(training_size):
-    image = misc.imread(log_list[r][0])
-    if log_list[r][2] == 1:
-        M = np.float32([[1,0,-3],[0,1,0]])
-        image = cv2.warpAffine(image, M, (320, 160))
-    elif log_list[r][2] == 2:
-        M = np.float32([[1,0,3],[0,1,0]])
-        image = cv2.warpAffine(image, M, (320, 160))
-    elif log_list[r][2] == 4:
-        image = cv2.warpAffine(image, plus5, (320, 160))  # size parameters reversed
-    elif log_list[r][2] == 3:
-        image = cv2.warpAffine(image, minus5, (320, 160))  # size parameters reversed
-    X_train[r] = image[60:135, :, :]
-    y_train[r] = int(step_ratio + (step_ratio * float(log_list[r][1])))
-    #my_hist[y_train[r]] += 1
-#print('my_hist {}'.format(my_hist))
-print('Read completed')
-classes = np.zeros(nb_classes, dtype=int)
-for i in range(nb_classes):
-    classes[i] = i
-#y_train_one_hot = preprocessing.label_binarize(y_train, classes)
-
-# shuffle the data
-X_train, y_train = shuffle(X_train, y_train, random_state=0)
-print('Shuffle completed')
+log_list = shuffle(log_list, random_state=0)
+marker = int(training_size * (1.0 - validation_split))
+train_list = log_list[0:marker]
+validate_list = log_list[marker:]
+nb_batches = len(train_list) // batch_size
+nb_validation_batches = len(validate_list) // batch_size
 
 # use keras normalization; excessive memory consumed using the code below prior to pipeline
-# normalization to color range
-#a = -0.5
-#b = 0.5
-#color_range = 255
-#X_normalized = a + ((X_train * (b - a)) / color_range)
-#print('Normalization completed')
-
-#test = misc.imread('/home/kjames/code/udacity/nd013/project3/data/' + log_list[0][0])
-#plt.imshow(test)
 
 # sparse_categorical_crossentropy seems to be the closes to tensorflow crossentropy with logits
-model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
+#model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
+model.compile(optimizer='adam', loss='mse', metrics=['mean_squared_error'])
+
+#print(feature_layers[0].input_shape)
+#print(feature_layers[1].output_shape)
+#print(feature_layers[2].output_shape)
+#print(feature_layers[3].output_shape)
+#print(feature_layers[4].output_shape)
+#print(feature_layers[5].output_shape)
+#print(feature_layers[6].output_shape)
+#print(feature_layers[7].output_shape)
+#print(feature_layers[8].output_shape)
+#print(feature_layers[9].output_shape)
+#print(feature_layers[10].output_shape)
+#print(feature_layers[11].output_shape)
+#print(classification_layers[0].input_shape)
 
 # if the incremental flag is set, load existing weights and run a short training on the classification layers only
 if incremental:
     print('Loading weights')
     model.load_weights('model.h5', False)
 
-if incremental:
+if short_run:
     nb_epoch = 1
 else:
-    nb_epoch = 25
-history = model.fit(X_train, y_train, batch_size=batch_size, nb_epoch=nb_epoch, validation_split=0.2)
+    nb_epoch = 5
+history = model.fit_generator(generate_training(), samples_per_epoch=(batch_size * nb_batches), nb_epoch=nb_epoch,
+                              validation_data=generate_validation(), nb_val_samples=(batch_size * nb_validation_batches))
 
 # save the model design
 json_string = model.to_json()
