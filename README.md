@@ -2,6 +2,32 @@
 
 I started from the Nvidia Dave-2 architecture from the paper.  I tried modifications on this but I either hit memory limitations or did not improve accuracy.  Aside from adding dropout and max pooling to limit overfitting, the final architecture closely resembles Nvidia's.  Following the lectures I used relu for activations and softmax for the final classification.  _However, it would turn out that the problems were much more related to training data than to reported accuracy numbers._
 
+### Layer Detail
+
+1. BatchNormalization
+2. Convolution2D, nb_filter=24, nb_row=5, nb_col=5, subsample=(2,2)
+3. MaxPooling2D, pool_size=(2,2), strides=(1,1)
+4. ELU
+5. Dropout, 0.25
+6. Convolution2D, nb_filter=36, nb_row=5, nb_col=5, subsample=(2,2)
+7. ELU
+8. Dropout, 0.25
+9. Convolution2D, nb_filter=48, nb_row=5, nb_col=5, subsample=(2,2)
+10. ELU
+11. Convolution2D, nb_filter=64, nb_row=3, nb_col=3
+12. ELU
+13. Convolution2D, nb_filter=64, nb_row=3, nb_col=3
+14. ELU
+15. Flatten
+16. Dense, 100 (a) or 1000 (b)
+17. ELU
+18. Dropout, 0.5
+19. Dense, 50 (a) or 500 (b)
+20. ELU
+21. Dense, 21 (a) or 1 (b)
+22. Softmax (a only)
+
+
 To summarize, the model performs normalization of inputs, followed by five convolutional layers, two flat layers, and final classification layer.  The first three convolutional layers use 5x5 filters with (2,2) stride, while the remaining convolutional layers uses 3x3 filters with (1,1) stride.  The first layer uses 2x2 max pooling and 0.25 dropout.  The next layers uses 0.25 dropout.  After the convolutional layers, results are flattened and fed into a series of three dense layers, the final of which yields the output.  ELU activation is used in each layer except the final layer.  ELU provided slightly better accuracy convergence than ReLU.
 
 ### Categorical Angle Method
@@ -25,6 +51,8 @@ It took many passes to train the network to the point that it (mostly) stopped d
 
 The following images show a few views in the error recovery around a turn.  To prevent the car from driving straight over the shoulder into the water, multiple sequences were recorded showing the view either tracking closely to the right shoulder, or facing too sharply toward the left shoulder, wheels turned right, following around and away from the left shoulder and the water.
 
+### Correction Images at a Problem Curve
+
 ![Image of Right Shoulder]
 (./images/center_2017_01_29_20_10_17_090.jpg)
 
@@ -44,7 +72,7 @@ During training, for this project I found training accuracy to be a poor metric.
 
 ### Integer Angle MSE Method
 
-Because the categorical method below tended to produce a _twitchy_ model, I switched to mean squared error optimization on integer inputs.  (Floating point steering angle values were converted to/from integer steps).  Using MSE I trained on five epochs with the captured training images without augmentation.  I also used a python generator to supply training and validation images for this method.  Attempts to add small data sets to tune the model did not perform well, and the final results were obtained by training on the full data set in one pass.
+Because the categorical method below tended to produce a _twitchy_ model, I switched to mean squared error optimization on integer inputs.  (Floating point steering angle values were converted to/from integer steps).  As for the categorical method, input images are windowed to focus on the useful region.  Using MSE I trained on five epochs with the captured training images without augmentation.  I also used a python generator to supply training and validation images for this method.  Attempts to add small data sets to tune the model did not perform well, and the final results were obtained by training on the full data set in one pass.
 
 ##Changes From First Submission
 
